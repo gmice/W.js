@@ -1,0 +1,15 @@
+{
+  "name": "W.js",
+  "version": "1.0.0",
+  "description": "",
+  "main": "src/index.js",
+  "dependencies": {
+    "htmlparser2": "^3.9.1"
+  },
+  "devDependencies": {},
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "author": "minhao.jin@gmail.com",
+  "license": "ISC"
+}
