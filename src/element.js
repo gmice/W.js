@@ -10,8 +10,8 @@ function WElement(W) {
     this.attributes = {};
     this.children   = [];
     this.listeners  = {};
-    this.mark_beg   = document.createComment('');
-    this.mark_end   = document.createComment('');
+    this.markBeg    = document.createComment('');
+    this.markEnd    = document.createComment('');
 
     var _target = document.createDocumentFragment();
     var self = this;
@@ -20,9 +20,9 @@ function WElement(W) {
             if (this.target_mark_beg === undefined) {
                 for (var i = 0; i < self.children.length; i++) {
                     var child = self.children[i];
-                    child.mark_beg && _target.appendChild(child.mark_beg);
+                    child.markBeg && _target.appendChild(child.markBeg);
                     _target.appendChild(child.target);
-                    child.mark_end && _target.appendChild(child.mark_end);
+                    child.markEnd && _target.appendChild(child.markEnd);
                 }
             }
             return _target;
@@ -52,12 +52,12 @@ Object.assign(WElement.prototype, {
 
     appendChild: function(node) {
         this.children.push(node);
-        var mark_end = this.target_mark_end || this.mark_end;
-        if (mark_end.parentNode) {
-            if (node.mark_beg || node.mark_end) {
+        var markEnd = this.target_mark_end || this.markEnd;
+        if (markEnd.parentNode) {
+            if (node.markBeg || node.markEnd) {
                 throw "Not Implemented";
             }
-            mark_end.parentNode.insertBefore(node.target, mark_end);
+            markEnd.parentNode.insertBefore(node.target, markEnd);
         }
     },
 
@@ -81,12 +81,12 @@ Object.assign(WElement.prototype, {
         }
     },
 
-    removeAttribute: function(attr_name) {
+    removeAttribute: function(attrName) {
         delete this.attributes[attr_name];
     },
 
-    removeEventListener: function(event, listener) {
-        delete this.listeners[event];
+    removeEventListener: function(event) {
+        this.listeners[event] = null;
     },
 
     replaceChild: function(newChild, oldChild) {
@@ -95,12 +95,12 @@ Object.assign(WElement.prototype, {
             return;
         }
         this.children[i] = newChild;
-        var mark_end = this.target_mark_end || this.mark_end;
-        if (mark_end.parentNode) {
-            if (newChild.mark_beg || newChild.mark_end) {
+        var markEnd = this.target_mark_end || this.markEnd;
+        if (markEnd.parentNode) {
+            if (newChild.markBeg || newChild.markEnd) {
                 throw "Not Implemented";
             }
-            mark_end.parentNode.replaceChild(newChild.target, oldChild.target);
+            markEnd.parentNode.replaceChild(newChild.target, oldChild.target);
         }
     },
 

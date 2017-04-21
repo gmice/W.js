@@ -65,7 +65,7 @@ Object.assign(VBody.prototype, {
     },
 
     toNode: function(markBeg, markEnd) {
-        var node = this.node = new NodeMark(this.W, markBeg, markEnd);
+        var node = this.node = new NodeMark(markBeg, markEnd);
 
         for (var i = 0; i < this.children.length; i++) {
             var childNode = this.children[i].toNode()
@@ -89,6 +89,7 @@ function VElement(W, name, type, attributes, parent) {
 
 Object.assign(VElement.prototype, {
     merge: function(vnodeThat) {
+        var W = this.W;
         var node = this.node, vnodeThis = this;
         var diff = false;
 
@@ -116,10 +117,10 @@ Object.assign(VElement.prototype, {
 
         // Merge events
         for (var eventName in vnodeThis.listeners) {
-            node.removeEventListener(eventName, vnodeThis.listeners[eventName]);
+            node.removeEventListener(eventName);
         }
         for (var eventName in vnodeThat.listeners) {
-            node.addEventListener(eventName, vnodeThat.listeners[eventName]);
+            node.addEventListener(eventName, W._wrapListener(vnodeThat.listeners[eventName]));
         }
 
         // Merge children
@@ -176,16 +177,17 @@ Object.assign(VElement.prototype, {
     },
 
     toNode: function() {
-        var node = this.node = createElement(this.W, this.name);
+        var W = this.W;
+        var node = this.node = createElement(W, this.name);
 
         var attributes = this.attributes;
-        for (var attr_name in attributes) {
-            node.setAttribute(attr_name, attributes[attr_name]);
+        for (var attrName in attributes) {
+            node.setAttribute(attrName, attributes[attrName]);
         }
 
         var listeners = this.listeners;
-        for (var event_name in listeners) {
-            node.addEventListener(event_name, listeners[event_name]);
+        for (var eventName in listeners) {
+            node.addEventListener(eventName, W._wrapListener(listeners[eventName]));
         }
 
         for (var i = 0; i < this.children.length; i++) {
@@ -240,7 +242,7 @@ Object.assign(VTextNode.prototype, {
 
     toNode: function() {
         var content = this.filters ? filter.apply(this.text, this.filters) : this.text;
-        var node = this.node = this.isHTML ? createHTMLNode(this.W, content) : createTextNode(this.W, content);
+        var node = this.node = this.isHTML ? createHTMLNode(content) : createTextNode(content);
         return node;
     }
 });
@@ -254,18 +256,18 @@ function createElement(W, name) {
         return new WElement(W);
     }
 
-    return new NodeProxy(W, document.createElement(name));
+    return new NodeProxy(document.createElement(name));
 }
 
-function createHTMLNode(W, html) {
+function createHTMLNode(html) {
     var tpl = document.createElement('template');
     tpl.innerHTML = '<!---->' + (html == null ? '' : html) + '<!---->';
     var tplContent = tpl.content;
-    return new NodeMark(W, tplContent.childNodes[0], tplContent.childNodes[tplContent.childNodes.length - 1]);
+    return new NodeMark(tplContent.childNodes[0], tplContent.childNodes[tplContent.childNodes.length - 1]);
 }
 
-function createTextNode(W, text) {
-    return new NodeProxy(W, document.createTextNode(text == null ? '' : text));
+function createTextNode(text) {
+    return new NodeProxy(document.createTextNode(text == null ? '' : text));
 }
 
 function clearText(node) {
@@ -367,6 +369,25 @@ Object.assign(WClass.fn, {
 
     _createVTextNode: function(parent, text) {
         return new VTextNode(this, text, arguments.length > 2 ? SLICE.call(arguments, 2) : null, parent);
+    },
+
+    _text: function(text) {
+        if (arguments.length === 1) {
+            return text == null ? '' : text;
+        } else {
+            return filter.apply(text, SLICE.call(arguments, 1));
+        }
+    },
+
+    _wrapListener: function(listener) {
+        var W = this;
+        return function(e) {
+            W.call(listener, e).then(function(ret) {
+                if (ret === undefined || ret) {
+                    W.digest();
+                }
+            });
+        };
     }
 });
 

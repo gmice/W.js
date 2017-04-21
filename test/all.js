@@ -156,6 +156,18 @@ describe("W.js", function() {
                 });
             })(W.js("#main", "${val,IMPURE}<script>var val=\"val\";</script>"));
         });
+
+        it("HTML", function(done) {
+        // it("${val,HTML}", function(done) {
+            W.js("#main", "${val,HTML}<script>var val=\"<button>OK</button>\";</script>").on("load", function() {
+                try {
+                    expect($("#main button").length).to.be(1);
+                    done();
+                } catch (e) {
+                    done(e);
+                }
+            });
+        });
     });
 
     describe("Directive", function() {
@@ -303,6 +315,19 @@ describe("W.js", function() {
             W.js("#main", "<link rel=\"import\" href=\"widget/ww-hello.html\"><ww-hello name=\"W.js\"></ww-hello>").on("load", function() {
                 try {
                     expect(html("#main")).to.be("Hello W.js");
+                    done();
+                } catch (e) {
+                    done(e);
+                }
+            });
+        });
+    });
+
+    describe("Misc", function() {
+        it("Ignore whitespaces", function(done) {
+            W.js("#main", "<w for:=\"c of [1,2,3]\" ->\n\t<button>${c}</button>\n</w>").on("load", function() {
+                try {
+                    expect(html("#main")).to.be("<button>1</button>\n<button>2</button>\n<button>3</button>\n");
                     done();
                 } catch (e) {
                     done(e);

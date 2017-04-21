@@ -1,7 +1,6 @@
 "use strict";
 
-function NodeMark(W, markBeg, markEnd) {
-    this.W       = W;
+function NodeMark(markBeg, markEnd) {
     this.markBeg = markBeg;
     this.markEnd = markEnd;
 }
@@ -19,6 +18,10 @@ Object.defineProperty(NodeMark.prototype, 'content', {
 });
 
 Object.assign(NodeMark.prototype, {
+    addEventListener: function(event, listener) {
+        throw 'Unsupported';
+    },
+
     appendChild: function(node) {
         var parentNode = this.markBeg.parentNode;
         node.markBeg && parentNode.insertBefore(node.markBeg, this.markEnd);
@@ -26,16 +29,31 @@ Object.assign(NodeMark.prototype, {
         node.markEnd && parentNode.insertBefore(node.markEnd, this.markEnd);
     },
 
-    replaceChild: function(new_child, old_child) {
-        if (new_child.markBeg || old_child.markBeg) {
-            throw "Not Implemented";
+    remove: function() {
+        throw 'Unsupported';
+    },
+
+    removeAttribute: function(attrName) {
+        throw 'Unsupported';
+    },
+
+    removeEventListener: function(event) {
+        throw 'Unsupported';
+    },
+
+    replaceChild: function(newChild, oldChild) {
+        if (newChild.markBeg || oldChild.markBeg) {
+            throw 'Not Implemented';
         }
-        this.markBeg.parentNode.replaceChild(new_child.target, old_child.target);
+        this.markBeg.parentNode.replaceChild(newChild.target, oldChild.target);
+    },
+
+    setAttribute: function(attrName, attrValue) {
+        throw 'Unsupported';
     }
 });
 
-function NodeProxy(W, target) {
-    this.W         = W;
+function NodeProxy(target) {
     this.target    = target;
     this.listeners = {};
 }
@@ -49,16 +67,12 @@ Object.defineProperty(NodeProxy.prototype, 'textContent', {
 
 Object.assign(NodeProxy.prototype, {
     addEventListener: function(event, listener) {
-        var W = this.W, listeners = this.listeners;
-        if (!(event in listeners)) {
-            this.target.addEventListener(event, function(e) {
+        var listeners = this.listeners;
+        if (listeners[event] === undefined) {
+            this.target.addEventListener(event, function() {
                 var listener = listeners[event];
                 if (listener) {
-                    W.call(listener, e).then(function(ret) {
-                        if (ret === undefined || ret) {
-                            W.digest();
-                        }
-                    });
+                    return listener.apply(this, arguments);
                 }
             });
         }
@@ -72,43 +86,47 @@ Object.assign(NodeProxy.prototype, {
         node.markBeg && parentNode.appendChild(node.markEnd);
     },
 
-    remove: function(clean) {
-        if (!clean) {
-            if (this.target.remove) {
-                this.target.remove();
-            } else {
-                var markBeg = this.target.markBeg, markEnd = this.target.markEnd;
-                var node;
-                while ((node = markBeg.nextSibling) !== markEnd) {
-                    node.remove();
-                }
-            }
-        }
+    // remove: function(clean) {
+    //     if (!clean) {
+    //         if (this.target.remove) {
+    //             this.target.remove();
+    //         } else {
+    //             var markBeg = this.target.markBeg, markEnd = this.target.markEnd;
+    //             var node;
+    //             while ((node = markBeg.nextSibling) !== markEnd) {
+    //                 node.remove();
+    //             }
+    //         }
+    //     }
+    // },
+
+    remove: function() {
+        this.target.remove();
     },
 
     removeAttribute: function(attrName) {
         this.target.removeAttribute(attrName);
     },
 
-    removeEventListener: function(event, listener) {
-        this.listeners[event] = null;
+    removeEventListener: function(event) {
+        this.listeners[event] = undefined;
     },
 
-    replaceChild: function(new_child, old_child) {
+    replaceChild: function(newChild, oldChild) {
         var parentNode = this.target;
-        if (old_child.markBeg || new_child.markBeg) {
-            var mark = old_child.markBeg || old_child.target;
-            if (new_child.markBeg) {
-                parentNode.insertBefore(new_child.markBeg, mark);
-                parentNode.insertBefore(new_child.target, mark);
-                parentNode.insertBefore(new_child.markEnd, mark);
+        if (oldChild.markBeg || newChild.markBeg) {
+            var mark = oldChild.markBeg || oldChild.target;
+            if (newChild.markBeg) {
+                parentNode.insertBefore(newChild.markBeg, mark);
+                parentNode.insertBefore(newChild.target, mark);
+                parentNode.insertBefore(newChild.markEnd, mark);
             } else {
-                parentNode.insertBefore(new_child.target, mark);
+                parentNode.insertBefore(newChild.target, mark);
             }
-            old_child.remove();
+            oldChild.remove();
             return;
         }
-        this.target.replaceChild(new_child.target, old_child.target);
+        this.target.replaceChild(newChild.target, oldChild.target);
     },
 
     setAttribute: function(attrName, attrValue) {
