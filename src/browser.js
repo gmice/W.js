@@ -48,6 +48,7 @@ function loadInner(document, selector, content) {
             markEnd: markEnd
         }
     });
+
     var page = Page.compile(content);
 
     W.load(page);

@@ -179,7 +179,7 @@ Object.assign(WClass.fn, {
         var scope = W.scope;
         if (scope) {
             delete W.scope;
-            scope.mbody && scope.mbody.remove();
+            scope.mbody && scope.mbody.detach();
         }
     },
 

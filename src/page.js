@@ -16,30 +16,58 @@ function Page(props) {
 }
 
 function Scope(props) {
+    this.module = {exports: {}};
     props && Object.assign(this, props);
 }
 
-// Load page into pesudo window
-WClass.fn.load = function(page) {
-    var W = this;
-    return new Promise(function(resolve, reject) {
-        // 1. Resolve page imports
-        resolvePage(page).then(function(scope) {
-            W.scope = scope;
-            // 2. Apply page to the new W.scope
-            return W.call(page.apply, W);
-        }).then(function() {
-            // 3. Digest first time
-            return W.digest();
-        }).then(function() {
-            // 4. Fire onload event
-            W.fire("load", null, false);
-        }).then(resolve);
-    });
-};
+Object.assign(WClass.fn, {
+    // Load page into pesudo window
+    load: function(page) {
+        var W = this;
+        return new Promise(function(resolve, reject) {
+            // 1. Resolve page imports
+            resolvePage(page).then(function(scope) {
+                W.scope = scope;
+                // 2. Apply page to the new W.scope
+                return W.call(page.apply, W, scope.module.exports, null, scope.module); // FIXME: require, __filename, __dirname
+            }).then(function() {
+                // 3. Digest first time
+                return W.digest();
+            }).then(function() {
+                // 4. Fire onload event
+                W.fire("load", null, false);
+                if (W.node.ref) {
+                    W.node.ref.set(W.scope.module.exports);
+                }
+            }).then(resolve);
+        })
+    },
+
+    _class: function(s, o) {
+        var a = [];
+        if (s) a.push(s);
+        for (var name in o) {
+            if (o[name]) {
+                a.push(name);
+            }
+        }
+        return a.length ? a.join(" ") : null;
+    }
+});
+
+function hash(s) {
+    var h = 0;
+    if (s.length === 0) return h;
+    for (var i = 0; i < s.length; i++) {
+        var chr = s.charCodeAt(i);
+        h = ((h << 5) - h) + chr;
+        h |= 0;
+    }
+    return h;
+}
 
 function parseText(text, filterVars) {
-    var from, to, expr = [];
+    var from, to, exprs = [];
     while (text && ((from = text.indexOf("${")) !== -1)) {
         to = from + 2;
 
@@ -66,45 +94,54 @@ function parseText(text, filterVars) {
         }
 
         if (from > 0) {
-            expr.push({repr: JSON.stringify(text.substring(0, from))});
+            exprs.push({repr: JSON.stringify(text.substring(0, from))});
         }
 
-        var e = text.substring(from + 2, to);
+        var expr = text.substring(from + 2, to).trim();
+        text = text.substring(to + 1);
 
-        // Extract filter names from expression, eg:
-        // x,FILTER1 -> FILTER1
-        // x,FILTER1,FILTER2(args) -> FILTER1,FILTER2
-        var ast = esprima.parse(e);
-        if (ast.body[0].type === "ExpressionStatement" &&
-        ast.body[0].expression.type === "SequenceExpression") {
-            var expressions = ast.body[0].expression.expressions;
-            for (var i = 1; i < expressions.length; i++) {
-                var exprNode = expressions[i];
-                var filterName;
+        if (expr) {
+            // Extract filter names from expression, eg:
+            // x,FILTER1 -> FILTER1
+            // x,FILTER1,FILTER2(args) -> FILTER1,FILTER2
+            var ast;
+            try {
+                ast = esprima.parse(expr);
+            } catch (e) {
+                console.error(e.description + "\n" + expr.split("\n")[e.lineNumber-1] + "\n" + Array(e.column).join(" ") + "^");
+                continue;
+            }
 
-                if (exprNode.type === "Identifier") {
-                    filterName = exprNode.name;
-                }
+            if (ast.body[0].type === "ExpressionStatement" &&
+                ast.body[0].expression.type === "SequenceExpression") {
+                var expressions = ast.body[0].expression.expressions;
+                for (var i = 1; i < expressions.length; i++) {
+                    var exprNode = expressions[i];
+                    var filterName;
 
-                if (exprNode.type === "CallExpression" && exprNode.callee.type === "Identifier") {
-                    filterName = exprNode.callee.name;
-                }
+                    if (exprNode.type === "Identifier") {
+                        filterName = exprNode.name;
+                    }
 
-                if (filterName) {
-                    filterVars[filterName] = true;
+                    if (exprNode.type === "CallExpression" && exprNode.callee.type === "Identifier") {
+                        filterName = exprNode.callee.name;
+                    }
+
+                    if (filterName) {
+                        filterVars[filterName] = true;
+                    }
                 }
             }
-        }
 
-        expr.push({expr: true, repr: text.substring(from + 2, to)});
-        text = text.substring(to + 1);
+            exprs.push({expr: true, repr: expr});
+        }
     }
 
     if (text && text.length) {
-        expr.push({repr: JSON.stringify(text)});
+        exprs.push({repr: JSON.stringify(text)});
     }
 
-    return expr;
+    return exprs;
 }
 
 function visitChildren(node, ctx) {
@@ -123,6 +160,19 @@ function visitChildren(node, ctx) {
     }
 }
 
+function visitScript(node, ctx) {
+    if (node.children && node.children.length) {
+        ctx.scripts.push(node.children[0].data);
+    }
+}
+
+function visitStyle(node, ctx) {
+    // if (node.children && node.children.length) {
+    //     ctx.styles.push(node.children[0].data);
+    // }
+    visitTag(node, ctx);
+}
+
 function visitTag(node, ctx) {
     var out = ctx.out;
 
@@ -130,6 +180,7 @@ function visitTag(node, ctx) {
     var listeners = {};
     var ifExpr = null;
     var forExpr = null;
+    var refExpr = null;
     var varExpr = null;
     var fixIndent = false;
 
@@ -162,12 +213,18 @@ function visitTag(node, ctx) {
                 ifExpr = attrValue;
                 break;
             }
+            case "ref:": {
+                refExpr = attrValue;
+                break;
+            }
             case "var:": {
                 varExpr = attrValue;
                 break;
             }
             case "href:":
             case "value:": {
+                var name = node.name;
+
                 if (name === "a" && attrName === "href:" && attrValue.startsWith("javascript:")) {
                     attributes["href"] = Object.assign(attributes["href"] || {}, {repr: "javascript:void(0)"});
                     listeners["click"] = Object.assign(listeners["click"] || {}, {after: attrValue.substring("javascript:".length)});
@@ -225,15 +282,20 @@ function visitTag(node, ctx) {
             expr = JSON.stringify(def.repr);
         }
 
+        var exprs = [];
         for (var attrName in attributes) {
             if (!attrName.startsWith("class:")) {
                 continue;
             }
-            expr += "+(("+attributes[attrName]+")?"+JSON.stringify(" "+attrName.substring(6))+":\"\")"
+            exprs.push(JSON.stringify(attrName.substring(6)) + ":(" + attributes[attrName] + ")");
             delete attributes[attrName];
         }
 
-        attributes["class"] = {expr: expr};
+        if (exprs.length) {
+            attributes["class"] = {expr: "$class((" + expr + "),{" + exprs.join(",") + "})"};
+        } else {
+            attributes["class"] = {expr: expr};
+        }
     }
 
     out.push("vnode = $ve(pvnode, \"" + node.name + "\", 9, {");
@@ -246,7 +308,14 @@ function visitTag(node, ctx) {
             out.push("\"" + attrName + "\": " + JSON.stringify(def.repr) + ",");
         }
     }
-    out.push("});");event
+    out.push("});");
+
+    if (refExpr) {
+        out.push("vnode.ref = {");
+        out.push("set: function($ref) { " + refExpr + " = $ref; },");
+        out.push("del: function() { " + refExpr + " = undefined; }");
+        out.push("};");
+    }
 
     for (var event in listeners) {
         var def = listeners[event];
@@ -294,24 +363,19 @@ function visitTag(node, ctx) {
 
     var ctxNext = Object.assign({}, ctx);
     if (fixIndent) {
-        ctxNext.fixIndent++;
-
         var firstChild = node.children[0];
-        if (firstChild && firstChild.type === "text" && firstChild.data.startsWith("\n")) {
-            firstChild.data = firstChild.data.substring(1);
+        if (firstChild && firstChild.type === "text" && firstChild.data.trim() === "") {
+            node.children.shift();
         }
 
         var lastChild = node.children[node.children.length - 1];
-        if (lastChild && lastChild.type === "text") {
-            var index = lastChild.data.lastIndexOf("\n");
-            if (index !== -1) {
-                lastChild.data = lastChild.data.substring(0, index+1);
-            }
+        if (lastChild && lastChild.type === "text" && lastChild.data.trim() === "") {
+            node.children.pop();
         }
     }
 
     if (forExpr) {
-        var forVar = forExpr.trim().split(" ")[0]; // FIXME: use ast
+        var forVar = forExpr.trim().split(/ |=/)[0]; // FIXME: use ast
         out.push("var " + forVar + "$index = 0;");
         out.push("for (var " + forExpr + ") {");
         out.push("(function(" + forVar + ", " + forVar + "$index) {");
@@ -329,29 +393,10 @@ function visitTag(node, ctx) {
 }
 
 function visitText(node, ctx) {
-    var text = node.data;
-
-    if (ctx.fixIndent) {
-        text = text.split("\n").map(function(line) {
-            for (var i = 0; i < ctx.fixIndent; i++) {
-                if (line.startsWith("\t")) {
-                    line = line.substring(1);
-                    continue;
-                }
-                if (line.startsWith("    ")) {
-                    line = line.substring(4);
-                    continue;
-                }
-                break;
-            }
-            return line;
-        }).join("\n");
-    }
-
     var out = ctx.out;
     var filterVars = ctx.filterVars;
 
-    var expr = parseText(text, filterVars);
+    var expr = parseText(node.data, filterVars);
     for (var i = 0; i < expr.length; i++) {
         out.push("vnode = $vt(pvnode, " + expr[i].repr + ");");
     }
@@ -380,6 +425,9 @@ function visitWidget(node, ctx) {
             out.push("$detail[\""+attrName+"\"] = "+attrValue+";");
             out.push(attrValue+" = W.node.attributes[\""+attrName+"\"];");
         }
+
+        // FIXME
+        out.push("W.digest();");
     }
     out.push("W.fire(\"widget-digest\", $detail);");
     out.push("};");
@@ -414,19 +462,27 @@ function compile(content, href) {
     parser.end();
 
     var ctx = {
-        out:            [],
-        scripts:        [],
-        filterVars:     {},
-        imports:        [],
-        fixIndent:      0
+        out:        [],
+        scripts:    [],
+        styles:     [],
+        filterVars: {},
+        imports:    []
     };
 
     var dom = handler.dom;
     for (var i = 0; i < dom.length; i++) {
         var node = dom[i];
         switch (node.type) {
+            case "comment": {
+                // Ignore any comments
+                break;
+            }
             case "script": {
-                ctx.scripts.push(node.children[0].data);
+                visitScript(node, ctx);
+                break;
+            }
+            case "style": {
+                visitStyle(node, ctx);
                 break;
             }
             case "tag": {
@@ -456,9 +512,13 @@ function compile(content, href) {
     }
 
     var out = [];
-    out.push("exports.apply = function*(W) {");
+    out.push("\"use strict\";");
+    out.push("exports.apply = function*(W, exports, require, module, __filename, __dirname) {");
     out.push("W.scope.render = function render(pvnode) {");
-    out.push("var $ve = W._createVElement.bind(W), $vt = W._createVTextNode.bind(W), $t = W._text;");
+    out.push("var $ve    = W._createVElement.bind(W);");
+    out.push("var $vt    = W._createVTextNode.bind(W);");
+    out.push("var $t     = W._text;");
+    out.push("var $class = W._class;");
     out.push("var vnode;");
 
     // Declare filter variables
@@ -507,6 +567,7 @@ function compile(content, href) {
     out.push("}");
     out.push("});");
 
+    // FIXME
     out.push("W.scope.eval = function(script) { return eval(script); };");
 
     // FIXME: Refactor widget
@@ -515,8 +576,10 @@ function compile(content, href) {
     }
 
     if (ctx.scripts.length) {
+        var script = ctx.scripts.join("\n\n");
+        out.push("/** hash " + hash(script) + " **/");
         out.push("//--------------------------------------------------------------------------------");
-        out.push(ctx.scripts.join("\n\n"));
+        out.push(script);
         out.push("//--------------------------------------------------------------------------------");
     }
 
@@ -571,6 +634,19 @@ function definePage(pages) {
 }
 
 var DEFAULT_LOAD_OPTIONS = {
+    fetch: function(href) {
+        return new Promise(function(resolve, reject) {
+            http.get(href, function(res) {
+                var body = "";
+                res.on("data", function(d) {
+                    body += d;
+                });
+                res.on("end", function() {
+                    resolve(body);
+                });
+            });
+        });
+    },
     useCache: true
 };
 
@@ -583,37 +659,52 @@ function loadPage(href, options) {
             return;
         }
 
-        http.get(href, function(res) {
-            var body = "";
-            res.on("data", function(d) {
-                body += d;
-            });
-            res.on("end", function() {
-                var page = compilePage(body, href); // FIXME: cache?
-                resolve(page);
-            });
+        options.fetch(href).then(function(content) {
+            var page = compilePage(content, href); // FIXME: cache?
+            resolve(page);
         });
     });
 }
 
-function reloadPage(href) {
-    loadPage(href, {useCache: false}).then(function(page) {
-        var remains = window.W.children; // FIXME: Ref to window?
+var DEFAULT_RELOAD_OPTIONS = {
+    fetch: DEFAULT_LOAD_OPTIONS.fetch,
+    useCache: false
+};
+
+function reloadPage(href, options) {
+    options = Object.assign({}, DEFAULT_RELOAD_OPTIONS, options);
+
+    var rootW = options.W || window.W;
+    loadPage(href, {fetch: options.fetch, useCache: options.useCache}).then(function(page) {
+        var remains = rootW.children;
         while (remains.length) {
             var W = remains.shift();
 
-            if (W.scope.page.href !== href) {
+            if (!W.scope || W.scope.page.href !== href) {
                 remains = remains.concat(W.children);
                 continue;
             }
 
-            var from = page.script.indexOf("function render");
-            var to = page.script.indexOf("; //render", from);
-            var script = page.script.substring(from, to);
+            var re = /\/\*\* hash (.*) \*\*\//;
+            var hashOld = re.exec(W.scope.page.script)[1];
+            var hashNew = re.exec(page.script)[1];
+            if (hashOld === hashNew) {
+                var from = page.script.indexOf("function render");
+                var to = page.script.indexOf("; //render", from);
+                var script = page.script.substring(from, to);
 
-            W.scope.render = W.scope.eval("("+script+")");
-            W.digest();
-            remains = remains.concat(W.children);
+                W.scope.render = W.scope.eval("("+script+")");
+                W.digest();
+
+                remains = remains.concat(W.children);
+            } else {
+                var scope = W.scope;
+                if (scope) {
+                    delete W.scope;
+                    scope.mbody && scope.mbody.detach();
+                }
+                W.load(page);
+            }
         }
     });
 }

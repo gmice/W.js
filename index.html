@@ -1,0 +1,65 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <!-- JQuery -->
+    <script src="https://code.jquery.com/jquery-3.2.1.min.js" integrity="sha256-hwg4gsxgFZhOsEEamdOYGBf13FyQuiTwlAQgxVSNgt4=" crossorigin="anonymous"></script>
+    <!-- Bootstrap -->
+    <link rel="stylesheet" href="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/css/bootstrap.min.css" integrity="sha384-BVYiiSIFeK1dGmJRAkycuHAHRg32OmUcww7on3RYdg4Va+PmSTsz/K68vbdEjh4u" crossorigin="anonymous">
+    <script src="https://maxcdn.bootstrapcdn.com/bootstrap/3.3.7/js/bootstrap.min.js" integrity="sha384-Tc5IQib027qvyjSMfHjOMaLkfuWVxZxUPnCJA7l2mCWNIpG9mGCD8wGNIcPD7Txa" crossorigin="anonymous"></script>
+    <!-- CodeMirror -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.25.2/codemirror.min.css">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.25.2/codemirror.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.25.2/mode/javascript/javascript.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.25.2/mode/xml/xml.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/codemirror/5.25.2/mode/htmlmixed/htmlmixed.min.js"></script>
+</head>
+<style>
+html, body { height: 100% }
+body { overflow: hidden }
+.CodeMirror { height: 100% }
+</style>
+<body>
+    <nav class="navbar navbar-inverse navbar-fixed-top">
+        <div class="navbar-header">
+            <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+                <span class="sr-only">Toggle navigation</span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+                <span class="icon-bar"></span>
+            </button>
+            <a class="navbar-brand" href="#">W.js</a>
+        </div>
+        <div id="navbar" class="collapse navbar-collapse">
+            <ul class="nav navbar-nav">
+                <li role="presentation" class="active"><a href="#">试一下</a></li>
+                <li role="presentation" class="dropdown">
+                    <a class="dropdown-toggle" data-toggle="dropdown" href="#" role="button" aria-haspopup="true" aria-expanded="false">
+                      示例 <span class="caret"></span>
+                    </a>
+                    <ul class="dropdown-menu">
+                        <li role="presentation"><a href="javascript:loadExample('hello')">Hello W.js</a></li>
+                        <li role="presentation"><a href="javascript:loadExample('bind')">双向绑定</a></li>
+                        <li role="presentation"><a href="javascript:loadExample('loop')">循环和条件判断</a></li>
+                        <li role="presentation"><a href="javascript:loadExample('event')">处理事件</a></li>
+                        <li role="presentation"><a href="javascript:loadExample('widget')">控件</a></li>
+                    </ul>
+                </li>
+            </ul>
+        </div>
+    </nav>
+    <div style="display:flex;height:100%;padding-top:50px">
+        <div style="flex:1;border-right:1px solid #ddd">
+            <ul id="pages" class="nav nav-tabs">
+                <li role="presentation" class="active"><a href="#">main.html</a></li>
+                <li role="presentation"><a href="#">+</a></li>
+            </ul>
+            <textarea id="code" style="width:100%;height:100%"></textarea>
+        </div>
+        <div id="main" style="flex:1;padding:20px">
+        </div>
+    </div>
+</body>
+<script src="index.js"></script>
+<script src="dist/w.js"></script>
+</html>

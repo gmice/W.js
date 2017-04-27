@@ -15,7 +15,10 @@ function Filter(fn, options) {
 
 function apply(text, filters) {
     for (var i = 0; i < filters.length; i++) {
-        text = filters[i].fn(text);
+        var filter = filters[i];
+        if (filter) {
+            text = filters[i].fn(text);
+        }
     }
     return text;
 }
@@ -26,7 +29,8 @@ function get(name) {
 
 function isHTML(filters) {
     for (var i = 0; i < filters.length; i++) {
-        if (filters[i].html) {
+        var filter = filters[i];
+        if (filter && filter.html) {
             return true;
         }
     }
@@ -35,7 +39,8 @@ function isHTML(filters) {
 
 function isPure(filters) {
     for (var i = 0; i < filters.length; i++) {
-        if (!filters[i].pure) {
+        var filter = filters[i];
+        if (!filter || !filter.pure) {
             return false;
         }
     }
