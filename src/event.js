@@ -46,10 +46,9 @@ Object.assign(WClass.fn, {
         var result = [];
 
         if (elems.length) {
-            var scope    = W.scope,
-                markBeg = scope.nbody.markBeg,
-                markEnd = scope.nbody.markEnd,
-                parent   = markBeg.parentNode;
+            var markBeg = W.node.markBeg,
+                markEnd = W.node.markEnd,
+                parent  = markBeg.parentNode;
 
             loop:
             for (var i = 0; i < elems.length; i++) {
@@ -380,9 +379,11 @@ Object.assign(WClass.fn, {
             if (w) return w;
         }
 
-        var parent = scope.nbody.markBeg.parentNode;
+        var markBeg = W.node.markBeg,
+            markEnd = W.node.markEnd,
+            parent = markBeg.parentNode;
         if (parent.contains(elem)) {
-            for (var node = scope.nbody.markBeg.nextSibling; node !== scope.nbody.markEnd; node = node.nextSibling) {
+            for (var node = markBeg.nextSibling; node !== markEnd; node = node.nextSibling) {
                 if (node.nodeType !== 1) continue;
                 if (node.contains(elem)) {
                     return W;

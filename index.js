@@ -59,7 +59,20 @@ var msg = "from main.html";
 <script>
 var x;
 </script>
-*/}).toString().match(re)[1]]]
+*/}).toString().match(re)[1]]],
+
+    ref: (function() {/*
+<div class="input-group">
+    <input ref:="$input" type="text" class="form-control" value="Some text...">
+    <span class="input-group-btn">
+        <button onclick:="$input.select()" class="btn btn-default">Select!</button>
+    </span>
+</div>
+
+<script>
+var $input;
+</script>
+*/}).toString().match(re)[1],
 };
 
 function loadExample(name) {
@@ -115,7 +128,8 @@ function loadPages(pages) {
 $(function() {
     cm = CodeMirror.fromTextArea(document.getElementById("code"), {
         mode: "htmlmixed",
-        lineNumbers: true
+        lineNumbers: true,
+        lineWrapping: true
     });
 
     cm.on("change", function() {

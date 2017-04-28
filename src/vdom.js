@@ -584,7 +584,6 @@ Object.assign(WClass.fn, {
             // 2. Attach actual DOM elements to virtual DOM elements, make virtual DOM mirror of actual DOM
             scope.mbody = vbody;
             vbody.attach(createInsertBeforeCursor(W.node.markEnd));
-            // scope.nbody = vbody.toNode(W.node.markBeg, W.node.markEnd);
         } else {
             // Not first time
             // Merge modification of virtual DOM to actual DOM

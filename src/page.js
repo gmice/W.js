@@ -686,9 +686,9 @@ function reloadPage(href, options) {
             }
 
             var re = /\/\*\* hash (.*) \*\*\//;
-            var hashOld = re.exec(W.scope.page.script)[1];
-            var hashNew = re.exec(page.script)[1];
-            if (hashOld === hashNew) {
+            var hashOld = (re.exec(W.scope.page.script) || [])[1];
+            var hashNew = (re.exec(page.script) || [])[1];
+            if (hashOld === hashNew && hashNew !== undefined) {
                 var from = page.script.indexOf("function render");
                 var to = page.script.indexOf("; //render", from);
                 var script = page.script.substring(from, to);

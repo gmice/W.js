@@ -43,20 +43,23 @@ body { overflow: hidden }
                         <li role="presentation"><a href="javascript:loadExample('loop')">循环和条件判断</a></li>
                         <li role="presentation"><a href="javascript:loadExample('event')">处理事件</a></li>
                         <li role="presentation"><a href="javascript:loadExample('widget')">控件</a></li>
+                        <li role="presentation"><a href="javascript:loadExample('ref')">元素引用</a></li>
                     </ul>
                 </li>
             </ul>
         </div>
     </nav>
-    <div style="display:flex;height:100%;padding-top:50px">
-        <div style="flex:1;border-right:1px solid #ddd">
-            <ul id="pages" class="nav nav-tabs">
-                <li role="presentation" class="active"><a href="#">main.html</a></li>
-                <li role="presentation"><a href="#">+</a></li>
-            </ul>
-            <textarea id="code" style="width:100%;height:100%"></textarea>
-        </div>
-        <div id="main" style="flex:1;padding:20px">
+    <div class="container-fluid" style="height:100%;padding-top:50px">
+        <div class="row" style="height:100%">
+            <div class="col-md-6" style="height:100%;padding:0;border-right:1px solid #ddd">
+                <ul id="pages" class="nav nav-tabs">
+                    <li role="presentation" class="active"><a href="#">main.html</a></li>
+                    <li role="presentation"><a href="#">+</a></li>
+                </ul>
+                <textarea id="code" style="width:100%;height:100%"></textarea>
+            </div>
+            <div id="main" class="col-md-6" style="height:100%;padding-top:15px">
+            </div>
         </div>
     </div>
 </body>
