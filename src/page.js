@@ -8,6 +8,7 @@ var check       = require('syntax-error');
 
 var WClass      = require("./class.js");
                   require("./event.js");
+var Style       = require("./style.js");
 
 var pageCache = {};
 
@@ -63,7 +64,10 @@ function hash(s) {
         h = ((h << 5) - h) + chr;
         h |= 0;
     }
-    return h;
+    if (h < 0) {
+        h = 0xffffffff + h + 1;
+    }
+    return h.toString(16);
 }
 
 function parseText(text, filterVars) {
@@ -167,10 +171,9 @@ function visitScript(node, ctx) {
 }
 
 function visitStyle(node, ctx) {
-    // if (node.children && node.children.length) {
-    //     ctx.styles.push(node.children[0].data);
-    // }
-    visitTag(node, ctx);
+    if (node.children && node.children.length) {
+        ctx.styles.push(node.children[0].data);
+    }
 }
 
 function visitTag(node, ctx) {
@@ -260,6 +263,10 @@ function visitTag(node, ctx) {
                 attributes[attrName] = Object.assign(attributes[attrName] || {}, {expr: attrValue});
             }
         }
+    }
+
+    if (ctx.styleAttr) {
+        attributes[ctx.styleAttr] = {repr: ""};
     }
 
     if (ifExpr) {
@@ -470,21 +477,30 @@ function compile(content, href) {
     };
 
     var dom = handler.dom;
+    dom.forEach(function(node) {
+        if (node.type === "script") {
+            visitScript(node, ctx);
+            return;
+        }
+        if (node.type === "style") {
+            visitStyle(node, ctx);
+            return;
+        }
+    });
+
+    if (ctx.styles.length) {
+        var style = ctx.styles.join("\n\n");
+        var styleAttr = ctx.styleAttr = "style:" + hash(style);
+        style = Style.transform(style, styleAttr);
+        ctx.out.push("vnode = $ve(pvnode, \"style\", 9, {});");
+        ctx.out.push("pvnode = vnode;");
+        ctx.out.push("vnode = $vt(pvnode, " + JSON.stringify(style) + ");");
+        ctx.out.push("pvnode = pvnode.parent;");
+    }
+
     for (var i = 0; i < dom.length; i++) {
         var node = dom[i];
         switch (node.type) {
-            case "comment": {
-                // Ignore any comments
-                break;
-            }
-            case "script": {
-                visitScript(node, ctx);
-                break;
-            }
-            case "style": {
-                visitStyle(node, ctx);
-                break;
-            }
             case "tag": {
                 if (node.name === "link" && node.attribs["rel"] === "import") {
                     if (node.attribs["href"]) {
@@ -506,7 +522,7 @@ function compile(content, href) {
                 break;
             }
             default: {
-                throw "unsupported node type: " + node.type;
+                // Ignore comment/script/style ...
             }
         }
     }

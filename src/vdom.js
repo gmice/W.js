@@ -150,7 +150,25 @@ Object.assign(VElement.prototype, {
             if (attrName in that.attributes) {
                 var attrValue = that.attributes[attrName];
                 if (this.attributes[attrName] !== attrValue) {
-                    node.setAttribute(attrName, attrValue);
+                    var isProp = (attrName === "value" && attrName in node); // FIXME: Support more properties
+                    if (isProp) {
+                        var value = (attrValue == null || attrValue === false) ? null : attrValue;
+                        if (node.hasAttribute(attrName)) {
+                            if (node[attrName] !== value) {
+                                node[attrName] = value;
+                            }
+                        } else {
+                            if (value != null && value !== false) {
+                                node.setAttribute(attrName, attrValue);
+                            }
+                        }
+                    } else {
+                        if (attrValue == null || attrValue === false) {
+                            node.removeAttribute(attrName);
+                        } else {
+                            node.setAttribute(attrName, attrValue);
+                        }
+                    }
                 }
             } else {
                 node.removeAttribute(attrName);
@@ -160,7 +178,12 @@ Object.assign(VElement.prototype, {
             if (attrName in this.attributes) {
                 continue;
             }
-            node.setAttribute(attrName, that.attributes[attrName]);
+            var attrValue = that.attributes[attrName];
+            if (attrValue == null || attrValue === false) {
+                node.removeAttribute(attrName);
+            } else {
+                node.setAttribute(attrName, attrValue);
+            }
         }
         this.attributes = that.attributes;
 
