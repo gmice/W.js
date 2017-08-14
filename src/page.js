@@ -12,6 +12,8 @@ var Style       = require("./style.js");
 
 var pageCache = {};
 
+var reRef = /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*|\[[^\]]+\])*$/;
+
 function Page(props) {
     props && Object.assign(this, props);
 }
@@ -20,6 +22,63 @@ function Scope(props) {
     this.module = {exports: {}};
     props && Object.assign(this, props);
 }
+
+// class PageBuilder {
+//     constructor(content, options) {
+//         this.content = content;
+//         this.options = options;
+//     }
+//
+//     build() {
+//         return this.pipeline.reduce(
+//             (p, fn) => p.then(fn),
+//             Promise.resolve()
+//         );
+//     }
+//
+//     get pipeline() {
+//         var self = this;
+//         return [
+//             this._parse,
+//             this._preprocess,
+//             this._compile,
+//             this._resolve
+//         ].map(fn => fn.bind(self));
+//     }
+//
+//     _compile() {
+//         this._script = compile(this._dom, this.options.href);
+//         return Promise.resolve();
+//     }
+//
+//     _parse() {
+//         let h = new htmlparser.DomHandler();
+//         let p = new htmlparser.Parser(h, {decodeEntities: true});
+//         p.write(this.content);
+//         p.end();
+//         this._dom = h.dom;
+//         return Promise.resolve();
+//     }
+//
+//     _preprocess() {
+//         let fetch = this.options.fetch;
+//         let p = [];
+//         this._dom.forEach(n => {
+//             if (n.type === "script" && "src" in n.attribs) {
+//                 p.push(
+//                     fetch(n.attribs.src).then(content => {
+//                         n.data = content;
+//                     })
+//                 )
+//             }
+//         });
+//         return Promise.all(p);
+//     }
+//
+//     _resolve() {
+//
+//     }
+// }
 
 Object.assign(WClass.fn, {
     // Load page into pesudo window
@@ -36,7 +95,7 @@ Object.assign(WClass.fn, {
                 return W.digest();
             }).then(function() {
                 // 4. Fire onload event
-                W.fire("load", null, false);
+                W.fire({type: 'load', bubbles: false});
                 if (W.node.ref) {
                     W.node.ref.set(W.scope.module.exports);
                 }
@@ -224,6 +283,13 @@ function visitTag(node, ctx) {
                 varExpr = attrValue;
                 break;
             }
+            case "checked:":
+            case "disabled:":
+            case "selected:": {
+                attrName = attrName.substring(0, attrName.length - 1);
+                attributes[attrName] = Object.assign(attributes[attrName] || {}, {expr: "((" + attrValue + ") ? \"" + attrValue + "\" : null)"});
+                break;
+            }
             case "href:":
             case "value:": {
                 var name = node.name;
@@ -235,8 +301,8 @@ function visitTag(node, ctx) {
                 }
 
                 if (attrName === "value:") {
-                    attributes["value"] = Object.assign(attributes["href"] || {}, {expr: attrValue});
-                    if (/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*|\[[^\]]+\])*$/.test(attrValue)) { // FIXME: Util function
+                    attributes["value"] = Object.assign(attributes["value"] || {}, {expr: attrValue});
+                    if (reRef.test(attrValue)) {
                         if (name === "input" || name === "textarea") {
                             listeners["input"] = Object.assign(listeners["input"] || {}, {before: attrValue + " = e.target.value"});
                         } else if (name === "select") {
@@ -351,7 +417,7 @@ function visitTag(node, ctx) {
             out.push("vnode.attributes[\"" + attrName + "\"] = e.detail[\"" + attrName + "\"];");
 
             if ("expr" in def) {
-                if (/^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*|\[[^\]]+\])*$/.test(def.expr)) {
+                if (reRef.test(def.expr)) {
                     shouldDigest = true;
                     out.push(def.expr + " = e.detail[\"" + attrName + "\"];");
                 }
@@ -419,24 +485,45 @@ function visitWidget(node, ctx) {
     var out = [];
     out.push("W._widget_digest = function() {");
     out.push("var $detail = {};");
+
     for (var attrName in node.attribs) {
-        var attrValue = node.attribs[attrName];
-        if (attrName[attrName.length - 1] !== ":") {
+        var ref = node.attribs[attrName];
+        if (attrName[attrName.length - 1] !== ":" || !reRef.test(ref)) {
+            console.warn("Bad format, ignore widget attribute " + attrName + "=\"" + ref + "\"");
             continue;
         }
         attrName = attrName.substring(0, attrName.length-1);
 
         if (attrName.startsWith("on")) {
-            out.push(attrValue+" = W.node.listeners[\""+attrName.substring(2)+"\"];");
+            var eventName = attrName.substring(2);
+            out.push(ref+' = W.node.listeners["'+eventName+'"];');
         } else {
-            out.push("$detail[\""+attrName+"\"] = "+attrValue+";");
-            out.push(attrValue+" = W.node.attributes[\""+attrName+"\"];");
+            out.push("$detail[\""+attrName+"\"] = "+ref+";");
+            out.push(ref+' = W.node.attributes["'+attrName+'"];');
         }
-
-        // FIXME
-        out.push("W.digest();");
     }
-    out.push("W.fire(\"widget-digest\", $detail);");
+
+    if (node.children && node.children.length) {
+        var _node = node.children[0];
+        var pass = false;
+        if (_node.type === "text") {
+            var data = _node.data.trim();
+            if (data === "") {
+                pass = true; // Ignore blank text node
+            } else if (data.startsWith("${") && data.endsWith("}")) {
+                var ref = data.substring(2, data.length - 1);
+                if (reRef.test(ref)) {
+                    out.push(ref+" = W.node.children[0].text;");
+                    pass = true;
+                }
+            }
+        }
+        if (!pass) {
+            console.warn("Unexpected widget node: ", _node);
+        }
+    }
+
+    out.push("return $detail;");
     out.push("};");
 
     out.push("W._widget_emit = function() {");
@@ -463,11 +550,6 @@ function visitWidget(node, ctx) {
 }
 
 function compile(content, href) {
-    var handler = new htmlparser.DomHandler();
-    var parser = new htmlparser.Parser(handler, {decodeEntities: true});
-    parser.write(content);
-    parser.end();
-
     var ctx = {
         out:        [],
         scripts:    [],
@@ -475,6 +557,11 @@ function compile(content, href) {
         filterVars: {},
         imports:    []
     };
+
+    var handler = new htmlparser.DomHandler();
+    var parser = new htmlparser.Parser(handler, {decodeEntities: true});
+    parser.write(content);
+    parser.end();
 
     var dom = handler.dom;
     dom.forEach(function(node) {

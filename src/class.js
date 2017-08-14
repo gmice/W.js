@@ -28,6 +28,6 @@ function W(parent, props) {
     props  && Object.assign(this, props);
 }
 
-W.fn = W.prototype;
+W.fn = W.prototype.fn = W.prototype;
 
 module.exports = W;

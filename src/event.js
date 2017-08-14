@@ -29,15 +29,17 @@ function dispatchEvent(W, e) {
     if (listeners) {
         var _listeners = listeners[e.type];
         if (_listeners && _listeners.length) {
-            Promise.all(_listeners.map(function(listener) {
+            return Promise.all(_listeners.map(function(listener) {
                 return W.call(listener, e);
             })).then(function() {
+                e.handled = true;
                 if (!e.defaultPrevented && W.scope) {
                     W.digest();
                 }
             });
         }
     }
+    return Promise.resolve();
 }
 
 Object.assign(WClass.fn, {
@@ -163,7 +165,10 @@ Object.assign(WClass.fn, {
 
     destroy: function() {
         var W = this;
-        W.fire("unload", null, false);
+        W.fire({
+            event: 'unload',
+            bubbles: false
+        });
 
         if (W.parent) {
             W.parent.removeChild(W);
@@ -193,22 +198,40 @@ Object.assign(WClass.fn, {
         }
     },
 
-    fire: function(event, detail, bubbles) {
-        var W = this;
-        var e = new CustomEvent(event, {
-            detail: detail,
+    fire: function(event, detail) {
+        if (typeof event !== 'object') {
+            event = {type: event, detail: detail};
+        }
+
+        var e = new CustomEvent(event.type, {
+            detail: event.detail,
             bubbles: false,
             cancelable: true
         });
+
+        var W = this;
         e.W = W;
-        if (bubbles || bubbles === undefined) {
-            while (W) {
-                dispatchEvent(W, e); // TODO: support cancelable event
-                W = W.parent;
-            }
+        e.defaultHandler = event.defaultHandler;
+        e.handled = false;
+
+        var p;
+        if (event.bubbles || event.bubbles === undefined) {
+            var dispatch = function() {
+                return dispatchEvent(W, e).then(function() {
+                    W = W.parent;
+                    if (W) {
+                        return dispatch();
+                    }
+                });
+            };
+            p = dispatch();
         } else {
-            dispatchEvent(W, e);
+            p = dispatchEvent(W, e);
         }
+        p.then(function() {
+            e.defaultHandler && e.defaultHandler(e); // FIXME: preventDefault?
+        });
+
         return W;
     },
 
@@ -300,7 +323,10 @@ Object.assign(WClass.fn, {
 
     reload: function() {
         var W = this, scope = W.scope;
-        W.fire("unload", null, false);
+        W.fire({
+            event: 'unload',
+            bubbles: false
+        });
 
         if (W._calling) {
             for (var i = 0; i < W._calling.length; i++) {

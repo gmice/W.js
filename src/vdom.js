@@ -109,24 +109,29 @@ Object.assign(VElement.prototype, {
             this.ref.set(node);
         }
 
+        if (this.children.length) {
+            var _cursor = createAppendCursor(node);
+            for (var i = 0; i < this.children.length; i++) {
+                this.children[i].attach(_cursor);
+            }
+        }
+
         var attributes = this.attributes;
         for (var attrName in attributes) {
             var attrValue = attributes[attrName];
             if (attrValue != null) {
-                node.setAttribute(attrName, attributes[attrName]);
+                var isProp = (this.name === 'select' && attrName === 'value'); // FIXME: Support more properties
+                if (isProp) {
+                    node[attrName] = attrValue;
+                } else {
+                    node.setAttribute(attrName, attributes[attrName]);
+                }
             }
         }
 
         var listeners = this.listeners;
         for (var event in listeners) {
             node.addEventListener(event, wrapListener(W, this, event));
-        }
-
-        if (this.children.length) {
-            var _cursor = createAppendCursor(node);
-            for (var i = 0; i < this.children.length; i++) {
-                this.children[i].attach(_cursor);
-            }
         }
     },
 
@@ -145,6 +150,38 @@ Object.assign(VElement.prototype, {
         var W = this.W;
         var node = this.node;
 
+        // Merge children
+        var cursor;
+        var n = Math.max(this.children.length, that.children.length);
+        for (var i = 0; i < n; i++) {
+            var _this = this.children[i];
+            var _that = that.children[i];
+
+            if (_this === undefined) {
+                cursor = cursor || createAppendCursor(node);
+                _this = this.children[i] = _that;
+                _this.parent = this;
+                _this.attach(cursor);
+                continue;
+            }
+
+            if (_that === undefined) {
+                _this.detach();
+                continue;
+            }
+
+            if (_this.name !== _that.name) {
+                _this.replace(_that);
+                _this = this.children[i] = _that;
+                _this.parent = this;
+                continue;
+            }
+
+            _this.merge(_that);
+        }
+
+        this.children.length = that.children.length;
+
         // Merge attributes
         for (var attrName in this.attributes) {
             if (attrName in that.attributes) {
@@ -159,7 +196,7 @@ Object.assign(VElement.prototype, {
                             }
                         } else {
                             if (value != null && value !== false) {
-                                node.setAttribute(attrName, attrValue);
+                                node[attrName] = attrValue;
                             }
                         }
                     } else {
@@ -195,38 +232,6 @@ Object.assign(VElement.prototype, {
             node.addEventListener(event, wrapListener(W, this, event));
         }
         this.listeners = that.listeners;
-
-        // Merge children
-        var cursor;
-        var n = Math.max(this.children.length, that.children.length);
-        for (var i = 0; i < n; i++) {
-            var _this = this.children[i];
-            var _that = that.children[i];
-
-            if (_this === undefined) {
-                cursor = cursor || createAppendCursor(node);
-                _this = this.children[i] = _that;
-                _this.parent = this;
-                _this.attach(cursor);
-                continue;
-            }
-
-            if (_that === undefined) {
-                _this.detach();
-                continue;
-            }
-
-            if (_this.name !== _that.name) {
-                _this.replace(_that);
-                _this = this.children[i] = _that;
-                _this.parent = this;
-                continue;
-            }
-
-            _this.merge(_that);
-        }
-
-        this.children.length = that.children.length;
     },
 
     replace: function(that) {
@@ -348,17 +353,16 @@ Object.assign(WElement.prototype, {
 
     attach: function(cursor) {
         cursor(this.markBeg || (this.markBeg = document.createComment("")));
+        if (this.children.length) {
+            for (var i = 0; i < this.children.length; i++) {
+                this.children[i].attach(cursor);
+            }
+        }
         cursor(this.markEnd || (this.markEnd = document.createComment("")));
 
         if ("href" in this.attributes) {
             this._load(this.attributes.href);
             return;
-        }
-
-        if (this.children.length) {
-            for (var i = 0; i < this.children.length; i++) {
-                this.children[i].attach(cursor);
-            }
         }
     },
 
@@ -421,6 +425,11 @@ Object.assign(WElement.prototype, {
         this.children.length = that.children.length;
     },
 
+    replace: function(that) {
+        that.attach(createInsertBeforeCursor(this.markBeg));
+        this.detach();
+    },
+
     _load: function(href) {
         if (this.Wc) {
             this.Wc.destroy();
@@ -453,6 +462,15 @@ Object.assign(WElement.prototype, {
 
             href = href.substring(0, index);
         }
+
+        if (W.scope.page && W.scope.page.href) {
+            var hrefPage = W.scope.page.href;
+            if (hrefPage.startsWith("http://") || hrefPage.startsWith("https://")) {
+                var host = hrefPage.split("/").slice(0, 3).join("/");
+                href = host + "/" + href;
+            }
+        }
+
         Page.load(href).then(function(page) {
             Wc.load(page);
         });
@@ -499,6 +517,8 @@ Object.assign(WWidgetElement.prototype, {
             this.Wc.destroy();
             this.Wc = null;
         }
+        this.markBeg.remove();
+        this.markEnd.remove();
     },
 
     merge: function(that) {
@@ -534,12 +554,26 @@ Object.assign(WWidgetElement.prototype, {
         // Merge children
         this.children = that.children;
 
+        diff = true; // FIXME
         if (diff) {
             var Wc = this.Wc;
             if (Wc && Wc._widget_digest) {
-                Wc._widget_digest();
+                var detail = Wc._widget_digest();
+                Wc.fire({
+                    type: 'widget-digest',
+                    detail: detail,
+                    bubbles: false,
+                    defaultHandler: function(e) {
+                        (!e.handled) && Wc.digest();
+                    }
+                });
             }
         }
+    },
+
+    replace: function(that) {
+        that.attach(createInsertBeforeCursor(this.markBeg));
+        this.detach();
     }
 });
 
