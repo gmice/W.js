@@ -166,7 +166,7 @@ Object.assign(WClass.fn, {
     destroy: function() {
         var W = this;
         W.fire({
-            event: 'unload',
+            type: 'unload',
             bubbles: false
         });
 
@@ -324,7 +324,7 @@ Object.assign(WClass.fn, {
     reload: function() {
         var W = this, scope = W.scope;
         W.fire({
-            event: 'unload',
+            type: 'unload',
             bubbles: false
         });
 

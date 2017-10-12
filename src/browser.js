@@ -74,4 +74,19 @@ module.exports = function(W, window, document) {
             load(document, templates[i]);
         }
     }, false);
+
+    document.addEventListener("change", function(e) {
+        var target = e.target;
+        if (target.nodeName === "INPUT" && target.getAttribute("type") === "radio") {
+            var name = target.getAttribute("name");
+            var event = new CustomEvent("change:radio");
+            var radios = document.querySelectorAll("input[type=\"radio\"][name=\"" + name + "\"]");
+            for (var i = 0; i < radios.length; i++) {
+                var radio = radios[i];
+                if (radio !== target) {
+                    radio.dispatchEvent(event);
+                }
+            }
+        }
+    });
 };

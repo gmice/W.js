@@ -25,6 +25,7 @@ function VNode() {}
 var abstract = function() { throw 'abstract'; };
 Object.assign(VNode.prototype, {
     attach:  abstract,
+    clean:   abstract,
     detach:  abstract,
     merge:   abstract,
     replace: abstract
@@ -46,8 +47,13 @@ Object.assign(VBody.prototype, {
         }
     },
 
+    clean: function() {
+        for (var i = 0; i < this.children.length; i++) {
+            this.children[i].clean();
+        }
+    },
+
     detach: function() {
-        // FIXME: better way? for performance
         for (var i = 0; i < this.children.length; i++) {
             this.children[i].detach();
         }
@@ -135,12 +141,24 @@ Object.assign(VElement.prototype, {
         }
     },
 
+    clean: function() {
+        for (var i = 0; i < this.children.length; i++) {
+            this.children[i].clean();
+        }
+    },
+
     detach: function() {
-        if (this.node) {
-            if (this.ref) {
-                this.ref.del();
+        if (this.children.length) {
+            for (var i = 0; i < this.children.length; i++) {
+                this.children[i].clean();
             }
-            // TODO: recursive detach?
+        }
+
+        var node = this.node;
+        if (node) {
+            if (this.ref) {
+                this.ref.del(node);
+            }
             this.node.remove();
             this.node = null;
         }
@@ -187,23 +205,33 @@ Object.assign(VElement.prototype, {
             if (attrName in that.attributes) {
                 var attrValue = that.attributes[attrName];
                 if (this.attributes[attrName] !== attrValue) {
-                    var isProp = (attrName === "value" && attrName in node); // FIXME: Support more properties
-                    if (isProp) {
-                        var value = (attrValue == null || attrValue === false) ? null : attrValue;
-                        if (node.hasAttribute(attrName)) {
-                            if (node[attrName] !== value) {
-                                node[attrName] = value;
+                    switch (attrName) {
+                        case "checked":
+                            if (attrName === "checked" && "checked" in node) {
+                                node.checked = !!attrValue;
+                                break;
                             }
-                        } else {
-                            if (value != null && value !== false) {
-                                node[attrName] = attrValue;
+                        case "value": {
+                            if (attrName === "value" && "value" in node) {
+                                var value = (attrValue == null || attrValue === false) ? null : attrValue;
+                                if (node.hasAttribute("value")) {
+                                    if (node.value !== value) {
+                                        node.value = value;
+                                    }
+                                } else {
+                                    if (value != null && value !== false) {
+                                        node.value = attrValue;
+                                    }
+                                }
+                                break;
                             }
                         }
-                    } else {
-                        if (attrValue == null || attrValue === false) {
-                            node.removeAttribute(attrName);
-                        } else {
-                            node.setAttribute(attrName, attrValue);
+                        default: {
+                            if (attrValue == null || attrValue === false) {
+                                node.removeAttribute(attrName);
+                            } else {
+                                node.setAttribute(attrName, attrValue);
+                            }
                         }
                     }
                 }
@@ -261,6 +289,10 @@ Object.assign(VTextNode.prototype, {
         cursor(node);
     },
 
+    clean: function() {
+        // EMPTY
+    },
+
     detach: function() {
         this.node.remove();
         this.node = null;
@@ -307,6 +339,10 @@ Object.assign(VHTMLNode.prototype, {
         this.markBeg = node.content.firstChild;
         this.markEnd = node.content.lastChild;
         cursor(node.content);
+    },
+
+    clean: function() {
+        // EMPTY
     },
 
     merge: function(that) {
@@ -363,6 +399,19 @@ Object.assign(WElement.prototype, {
         if ("href" in this.attributes) {
             this._load(this.attributes.href);
             return;
+        }
+    },
+
+    clean: function() {
+        if (this.Wc) {
+            this.Wc.destroy();
+            this.Wc = null;
+        }
+
+        if (this.children.length) {
+            for (var i = 0; i < this.children.length; i++) {
+                this.children[i].clean();
+            }
         }
     },
 
@@ -510,6 +559,13 @@ Object.assign(WWidgetElement.prototype, {
 
         // TODO: fallback?
         throw "widget "+name+" is not imported";
+    },
+
+    clean: function() {
+        if (this.Wc) {
+            this.Wc.destroy();
+            this.Wc = null;
+        }
     },
 
     detach: function() {

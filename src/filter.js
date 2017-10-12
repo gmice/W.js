@@ -56,7 +56,7 @@ function set(name, fn, options) {
 }
 
 set("HTML", function(s){return s;}, {html: true});
-set("JSON", function(s){return JSON.stringify(s);});
+set("JSON", function(s){return JSON.stringify(s);}, {pure: false});
 
 WClass.fn.filter = function(name, fn, options) {
     if (arguments.length === 1) {

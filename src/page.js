@@ -23,63 +23,6 @@ function Scope(props) {
     props && Object.assign(this, props);
 }
 
-// class PageBuilder {
-//     constructor(content, options) {
-//         this.content = content;
-//         this.options = options;
-//     }
-//
-//     build() {
-//         return this.pipeline.reduce(
-//             (p, fn) => p.then(fn),
-//             Promise.resolve()
-//         );
-//     }
-//
-//     get pipeline() {
-//         var self = this;
-//         return [
-//             this._parse,
-//             this._preprocess,
-//             this._compile,
-//             this._resolve
-//         ].map(fn => fn.bind(self));
-//     }
-//
-//     _compile() {
-//         this._script = compile(this._dom, this.options.href);
-//         return Promise.resolve();
-//     }
-//
-//     _parse() {
-//         let h = new htmlparser.DomHandler();
-//         let p = new htmlparser.Parser(h, {decodeEntities: true});
-//         p.write(this.content);
-//         p.end();
-//         this._dom = h.dom;
-//         return Promise.resolve();
-//     }
-//
-//     _preprocess() {
-//         let fetch = this.options.fetch;
-//         let p = [];
-//         this._dom.forEach(n => {
-//             if (n.type === "script" && "src" in n.attribs) {
-//                 p.push(
-//                     fetch(n.attribs.src).then(content => {
-//                         n.data = content;
-//                     })
-//                 )
-//             }
-//         });
-//         return Promise.all(p);
-//     }
-//
-//     _resolve() {
-//
-//     }
-// }
-
 Object.assign(WClass.fn, {
     // Load page into pesudo window
     load: function(page) {
@@ -231,7 +174,17 @@ function visitScript(node, ctx) {
 
 function visitStyle(node, ctx) {
     if (node.children && node.children.length) {
-        ctx.styles.push(node.children[0].data);
+        var text = node.children[0].data;
+        if (node.attribs['type'] === 'text/less' && window.less) {
+            window.less.render(text, function(e, output) {
+                if (e) {
+                    console.error(e);
+                    return;
+                }
+                text = output.css;
+            });
+        }
+        ctx.styles.push(text);
     }
 }
 
@@ -283,11 +236,21 @@ function visitTag(node, ctx) {
                 varExpr = attrValue;
                 break;
             }
-            case "checked:":
+            case "checked:": {
+                attributes["checked"] = Object.assign(attributes["checked"] || {}, {expr: "((" + attrValue + ") ? \"checked\" : null)"});
+                if (reRef.test(attrValue)) {
+                    listeners["change"] = Object.assign(listeners["change"] || {}, {before: attrValue + " = e.target.checked"});
+                    if (node.attribs["type"] === "radio") {
+                        listeners["change:radio"] = listeners["change"]
+                    }
+                }
+                break;
+            }
             case "disabled:":
+            case "multiple:":
             case "selected:": {
                 attrName = attrName.substring(0, attrName.length - 1);
-                attributes[attrName] = Object.assign(attributes[attrName] || {}, {expr: "((" + attrValue + ") ? \"" + attrValue + "\" : null)"});
+                attributes[attrName] = Object.assign(attributes[attrName] || {}, {expr: "((" + attrValue + ") ? \"" + attrName + "\" : null)"});
                 break;
             }
             case "href:":
@@ -386,7 +349,7 @@ function visitTag(node, ctx) {
     if (refExpr) {
         out.push("vnode.ref = {");
         out.push("set: function($ref) { " + refExpr + " = $ref; },");
-        out.push("del: function() { " + refExpr + " = undefined; }");
+        out.push("del: function($ref) { if ($ref === " + refExpr + ") " + refExpr + " = undefined; }");
         out.push("};");
     }
 
@@ -558,18 +521,23 @@ function compile(content, href) {
         imports:    []
     };
 
-    var handler = new htmlparser.DomHandler();
-    var parser = new htmlparser.Parser(handler, {decodeEntities: true});
-    parser.write(content);
-    parser.end();
+    var dom;
+    if (typeof content === 'string') {
+        var handler = new htmlparser.DomHandler();
+        var parser = new htmlparser.Parser(handler, {decodeEntities: true});
+        parser.write(content);
+        parser.end();
+        dom = handler.dom;
+    } else {
+        dom = content;
+    }
 
-    var dom = handler.dom;
     dom.forEach(function(node) {
         if (node.type === "script") {
             visitScript(node, ctx);
             return;
         }
-        if (node.type === "style") {
+        if (node.type === "style" || (node.type === "tag" && node.name === "link" && node.attribs["rel"] === "stylesheet")) {
             visitStyle(node, ctx);
             return;
         }
@@ -589,11 +557,16 @@ function compile(content, href) {
         var node = dom[i];
         switch (node.type) {
             case "tag": {
-                if (node.name === "link" && node.attribs["rel"] === "import") {
-                    if (node.attribs["href"]) {
-                        ctx.imports.push(node.attribs["href"]);
+                if (node.name === "link") {
+                    if (node.attribs["rel"] === "import") {
+                        if (node.attribs["href"]) {
+                            ctx.imports.push(node.attribs["href"]);
+                        }
+                        continue;
                     }
-                    continue;
+                    if (node.attribs["rel"] === "stylesheet") {
+                        continue;
+                    }
                 }
 
                 if (node.name === "template" && "w-widget" in node.attribs) {
@@ -739,7 +712,7 @@ function definePage(pages) {
 var DEFAULT_LOAD_OPTIONS = {
     fetch: function(href) {
         return new Promise(function(resolve, reject) {
-            http.get(href, function(res) {
+            http.get('/'+href, function(res) {
                 var body = "";
                 res.on("data", function(d) {
                     body += d;
@@ -763,9 +736,45 @@ function loadPage(href, options) {
         }
 
         options.fetch(href).then(function(content) {
-            var page = compilePage(content, href); // FIXME: cache?
-            resolve(page);
+            var handler = new htmlparser.DomHandler();
+            var parser = new htmlparser.Parser(handler, {decodeEntities: true});
+            parser.write(content);
+            parser.end();
+
+            var promises = [];
+
+            var dom = handler.dom;
+            for (var i = 0; i < dom.length; i++) {
+                var node = dom[i];
+                if (node.type === "tag" && node.name === "link" && node.attribs["rel"] === "stylesheet") {
+                    var _href = node.attribs["href"];
+                    if (_href) {
+                        promises.push(loadStyleSheet(node, options));
+                    }
+                }
+            }
+
+            Promise.all(promises).then(function() {
+                var page = compilePage(dom, href); // FIXME: cache?
+                resolve(page);
+            });
         });
+    });
+}
+
+function loadStyleSheet(node, options) {
+    return options.fetch(node.attribs["href"]).then(function(data) {
+        if (node.attribs['type'] === 'text/less' && window.less) {
+            return window.less.render(data).then(function(output) {
+                node.children = [{
+                    data: output.css
+                }];
+            });
+        }
+
+        node.children = [{
+            data: data
+        }];
     });
 }
 
@@ -835,6 +844,7 @@ module.exports = {
     compile: compilePage,
     define: definePage,
     load: loadPage,
+    // preprocess: preprocessPage,
     reload: reloadPage,
     Page: Page
 };

@@ -11,6 +11,7 @@ gulp.task("default", function() {
         }
     }
     return browserify({entries: "src/index.js"})
+        .ignore("less")
         .bundle()
         .pipe(fs.createWriteStream("dist/W.js"));
 });
