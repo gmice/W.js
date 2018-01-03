@@ -322,7 +322,12 @@ Object.assign(WClass.fn, {
     },
 
     reload: function() {
-        var W = this, scope = W.scope;
+        var W = this, scope = W.scope, page = scope.page;
+        if (!page) {
+            // NOP
+            return;
+        }
+
         W.fire({
             type: 'unload',
             bubbles: false
@@ -336,10 +341,10 @@ Object.assign(WClass.fn, {
 
         if (scope) {
             delete W.scope;
-            scope.mbody.remove();
+            scope.mbody && scope.mbody.detach();
         }
 
-        W.load(W.page);
+        W.load(page);
     },
 
     setInterval: function(fn, interval) {

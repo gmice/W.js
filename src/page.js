@@ -196,6 +196,7 @@ function visitTag(node, ctx) {
     var ifExpr = null;
     var forExpr = null;
     var refExpr = null;
+    var wrefExpr = null;
     var varExpr = null;
     var fixIndent = false;
 
@@ -230,6 +231,10 @@ function visitTag(node, ctx) {
             }
             case "ref:": {
                 refExpr = attrValue;
+                break;
+            }
+            case "wref:": {
+                wrefExpr = attrValue;
                 break;
             }
             case "var:": {
@@ -350,6 +355,13 @@ function visitTag(node, ctx) {
         out.push("vnode.ref = {");
         out.push("set: function($ref) { " + refExpr + " = $ref; },");
         out.push("del: function($ref) { if ($ref === " + refExpr + ") " + refExpr + " = undefined; }");
+        out.push("};");
+    }
+
+    if (wrefExpr) {
+        out.push("vnode.wref = {");
+        out.push("set: function($wref) { " + wrefExpr + " = $wref; },");
+        out.push("del: function($wref) { if ($wref === " + wrefExpr + ") " + wrefExpr + " = undefined; }");
         out.push("};");
     }
 

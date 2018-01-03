@@ -404,6 +404,9 @@ Object.assign(WElement.prototype, {
 
     clean: function() {
         if (this.Wc) {
+            if (this.wref) {
+                this.wref.del(this.Wc);
+            }
             this.Wc.destroy();
             this.Wc = null;
         }
@@ -417,6 +420,9 @@ Object.assign(WElement.prototype, {
 
     detach: function() {
         if (this.Wc) {
+            if (this.wref) {
+                this.wref.del(this.Wc);
+            }
             this.Wc.destroy();
             this.Wc = null;
         }
@@ -481,6 +487,9 @@ Object.assign(WElement.prototype, {
 
     _load: function(href) {
         if (this.Wc) {
+            if (this.wref) {
+                this.wref.del(this.Wc);
+            }
             this.Wc.destroy();
             this.Wc = null;
         }
@@ -493,6 +502,9 @@ Object.assign(WElement.prototype, {
 
         // FIXME
         var Wc = this.Wc = new WClass(W, {node: this});
+        if (this.wref) {
+            this.wref.set(Wc);
+        }
 
         // FIXME
         var listeners = this.listeners;
