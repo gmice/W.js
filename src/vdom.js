@@ -19,16 +19,113 @@ function createInsertBeforeCursor(ref) {
     };
 }
 
+function mergeKey(parent, src, dst) {
+    var _thisMap = {};
+    for (var i = 0; i < src.length; i++) {
+        var _this = src[i];
+        var key = _this.attributes && _this.attributes.key;
+        if (key) {
+            _thisMap[key] = _this;
+        }
+    }
+
+    for (var i = 0; i < dst.length; i++) {
+        var _that = dst[i];
+        var key = _that.attributes && _that.attributes.key;
+        if (key) {
+            var _this = _thisMap[key];
+            if (_this) {
+                _this.merge(_that);
+                _thisMap[key] = null; // Against duplicated keys
+                if (_this === src[i]) {
+                    continue;
+                }
+                var j = src.indexOf(_this);
+                src.splice(j, 1);
+                src.splice(i, 0, _this);
+                _this.attach(src[i+1] ? src[i+1].cursorInsertBefore() : parent.cursorAppend());
+            } else {
+                _this = _that;
+                src.splice(i, 0, _this);
+                _this.parent = parent;
+                _this.attach(src[i+1] ? src[i+1].cursorInsertBefore() : parent.cursorAppend());
+            }
+        } else {
+            var _this = src[i];
+            if (_this) {
+                if (_this.attributes && _this.attributes.key) {
+                    _this = _that;
+                    src.splice(i, 0, _this);
+                    _this.parent = parent;
+                    _this.attach(src[i+1] ? src[i+1].cursorInsertBefore() : parent.cursorAppend());
+                } else {
+                    // Both _this and _that not have key, do in-place merge
+                    if (_this.name !== _that.name) {
+                        _this.replace(_that);
+                        _this = src[i] = _that;
+                        _this.parent = parent;
+                        continue;
+                    }
+                    _this.merge(_that);
+                }
+            } else {
+                _this = src[i] = _that;
+                _this.parent = parent;
+                _this.attach(parent.cursorAppend());
+            }
+        }
+    }
+
+    for (var i = dst.length; i < src.length; i++) {
+        src[i].detach();
+    }
+    src.length = dst.length;
+}
+
+function mergeInPlace(parent, src, dst) {
+    var cursor;
+    var n = Math.max(src.length, dst.length);
+    for (var i = 0; i < n; i++) {
+        var _this = src[i];
+        var _that = dst[i];
+
+        if (_this === undefined) {
+            cursor = cursor || parent.cursorAppend();
+            _this = src[i] = _that;
+            _this.parent = parent;
+            _this.attach(cursor);
+            continue;
+        }
+
+        if (_that === undefined) {
+            _this.detach();
+            continue;
+        }
+
+        if (_this.name !== _that.name) {
+            _this.replace(_that);
+            _this = src[i] = _that;
+            _this.parent = parent;
+            continue;
+        }
+
+        _this.merge(_that);
+    }
+    src.length = dst.length;
+}
+
 // ============================================================================
 // VNode
 function VNode() {}
 var abstract = function() { throw 'abstract'; };
 Object.assign(VNode.prototype, {
-    attach:  abstract,
-    clean:   abstract,
-    detach:  abstract,
-    merge:   abstract,
-    replace: abstract
+    attach:             abstract,
+    clean:              abstract,
+    cursorAppend:       abstract,
+    cursorInsertBefore: abstract,
+    detach:             abstract,
+    merge:              abstract,
+    replace:            abstract
 });
 
 // ============================================================================
@@ -107,6 +204,11 @@ function VElement(W, name, type, attributes, parent) {
 VElement.prototype = new VNode();
 Object.assign(VElement.prototype, {
     attach: function(cursor) {
+        if (this.node) {
+            cursor(this.node);
+            return;
+        }
+
         var W = this.W;
         var node = this.node = document.createElement(this.name);
         cursor(node);
@@ -147,6 +249,14 @@ Object.assign(VElement.prototype, {
         }
     },
 
+    cursorAppend: function() {
+        return createAppendCursor(this.node);
+    },
+
+    cursorInsertBefore: function() {
+        return createInsertBeforeCursor(this.node);
+    },
+
     detach: function() {
         if (this.children.length) {
             for (var i = 0; i < this.children.length; i++) {
@@ -169,36 +279,11 @@ Object.assign(VElement.prototype, {
         var node = this.node;
 
         // Merge children
-        var cursor;
-        var n = Math.max(this.children.length, that.children.length);
-        for (var i = 0; i < n; i++) {
-            var _this = this.children[i];
-            var _that = that.children[i];
-
-            if (_this === undefined) {
-                cursor = cursor || createAppendCursor(node);
-                _this = this.children[i] = _that;
-                _this.parent = this;
-                _this.attach(cursor);
-                continue;
-            }
-
-            if (_that === undefined) {
-                _this.detach();
-                continue;
-            }
-
-            if (_this.name !== _that.name) {
-                _this.replace(_that);
-                _this = this.children[i] = _that;
-                _this.parent = this;
-                continue;
-            }
-
-            _this.merge(_that);
+        if (this.mergeMode === 'key') {
+            mergeKey(this, this.children, that.children);
+        } else {
+            mergeInPlace(this, this.children, that.children);
         }
-
-        this.children.length = that.children.length;
 
         // Merge attributes
         for (var attrName in this.attributes) {
@@ -293,6 +378,14 @@ Object.assign(VTextNode.prototype, {
         // EMPTY
     },
 
+    cursorAppend: function() {
+        return createAppendCursor(this.node);
+    },
+
+    cursorInsertBefore: function() {
+        return createInsertBeforeCursor(this.node);
+    },
+
     detach: function() {
         this.node.remove();
         this.node = null;
@@ -343,6 +436,14 @@ Object.assign(VHTMLNode.prototype, {
 
     clean: function() {
         // EMPTY
+    },
+
+    cursorAppend: function() {
+        return createInsertBeforeCursor(this.markEnd);
+    },
+
+    cursorInsertBefore: function() {
+        return createInsertBeforeCursor(this.markBeg);
     },
 
     merge: function(that) {
@@ -418,6 +519,14 @@ Object.assign(WElement.prototype, {
         }
     },
 
+    cursorAppend: function() {
+        return createInsertBeforeCursor(this.markEnd);
+    },
+
+    cursorInsertBefore: function() {
+        return createInsertBeforeCursor(this.markBeg);
+    },
+
     detach: function() {
         if (this.Wc) {
             if (this.wref) {
@@ -448,36 +557,11 @@ Object.assign(WElement.prototype, {
         this.attributes = that.attributes;
 
         // Merge children
-        var cursor;
-        var n = Math.max(this.children.length, that.children.length);
-        for (var i = 0; i < n; i++) {
-            var _this = this.children[i];
-            var _that = that.children[i];
-
-            if (_this === undefined) {
-                cursor = cursor || createInsertBeforeCursor(this.markEnd);
-                _this = this.children[i] = _that;
-                _this.parent = this;
-                _this.attach(cursor);
-                continue;
-            }
-
-            if (_that === undefined) {
-                _this.detach();
-                continue;
-            }
-
-            if (_this.name !== _that.name) {
-                _this.replace(_that);
-                _this = this.children[i] = _that;
-                _this.parent = this;
-                continue;
-            }
-
-            _this.merge(_that);
+        if (this.mergeMode === 'key') {
+            mergeKey(this, this.children, that.children);
+        } else {
+            mergeInPlace(this, this.children, that.children);
         }
-
-        this.children.length = that.children.length;
     },
 
     replace: function(that) {
@@ -578,6 +662,14 @@ Object.assign(WWidgetElement.prototype, {
             this.Wc.destroy();
             this.Wc = null;
         }
+    },
+
+    cursorAppend: function() {
+        return createInsertBeforeCursor(this.markEnd);
+    },
+
+    cursorInsertBefore: function() {
+        return createInsertBeforeCursor(this.markBeg);
     },
 
     detach: function() {

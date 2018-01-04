@@ -339,6 +339,10 @@ function visitTag(node, ctx) {
         }
     }
 
+    if ('key' in attributes) {
+        out.push("pvnode.mergeMode = 'key';");
+    }
+
     out.push("vnode = $ve(pvnode, \"" + node.name + "\", 9, {");
     for (var attrName in attributes) {
         var def = attributes[attrName];
