@@ -439,6 +439,10 @@ function visitTag(node, ctx) {
     }
     out.push("pvnode = pvnode.parent;");
 
+    if (node.name === 'w' && 'return' in attributes) {
+        out.push("return;");
+    }
+
     if (ifExpr) {
         out.push("}");
     }
