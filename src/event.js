@@ -24,6 +24,15 @@ function _import(src) {
     return promise;
 }
 
+function cancelPromises(W) {
+    if (W._promises) {
+        for (var i = 0; i < W._promises.length; i++) {
+            W._promises[i].cancel();
+        }
+        delete W._promises;
+    }
+}
+
 function dispatchEvent(W, e) {
     var listeners = W._event_listeners;
     if (listeners) {
@@ -77,27 +86,21 @@ Object.assign(WClass.fn, {
         if ("GeneratorFunction" === (fn.constructor.displayName || fn.constructor.name)) {
             var gtor = fn.apply(W, args);
 
-            if (W._calling === undefined) {
-                W._calling = [];
-            }
-
             var canceled = false;
             var fnCancel;
-
-            var promise = new Promise(function(resolve, reject) {
-                function _resolve(value) {
-                    W._calling.splice(W._calling.indexOf(promise), 1);
-                    resolve(value);
+            function cancel() {
+                canceled = true;
+                if (fnCancel) {
+                    fnCancel();
                 }
+            }
 
-                function _reject(value) {
-                    W._calling.splice(W._calling.indexOf(promise), 1);
-                    reject(value);
-                }
-
+            return W.promise(function(resolve, reject) {
                 function do_next() {
+                    fnCancel = null;
+
                     if (canceled) {
-                        _reject("Canceled");
+                        reject("Canceled");
                         return;
                     }
 
@@ -105,7 +108,7 @@ Object.assign(WClass.fn, {
                     try {
                         next = gtor.next.apply(gtor, arguments);
                     } catch (e) {
-                        _reject(e);
+                        reject(e);
                         return;
                     }
 
@@ -114,17 +117,17 @@ Object.assign(WClass.fn, {
 
                 function handle_next(next) {
                     if (next.done) {
-                        _resolve(next.value);
+                        resolve(next.value);
                         return;
                     }
 
                     var value = next.value;
                     if (value instanceof Promise) {
-                        if (value.cancel instanceof Function) {
-                            fnCancel = value.cancel.bind(value);
-                        }
+                        fnCancel = (value.cancel instanceof Function ? value.cancel.bind(value) : null);
 
                         value.then(do_next, function(e) {
+                            fnCancel = null;
+
                             var next;
                             try {
                                 next = gtor.throw(e);
@@ -142,17 +145,7 @@ Object.assign(WClass.fn, {
                 }
 
                 do_next();
-            });
-
-            promise.cancel = function() {
-                canceled = true;
-                if (fnCancel) {
-                    fnCancel();
-                }
-            }
-
-            W._calling.push(promise);
-            return promise;
+            }, cancel);
         } else {
             return Promise.resolve(fn.apply(W, args));
         }
@@ -174,11 +167,7 @@ Object.assign(WClass.fn, {
             W.parent.removeChild(W);
         }
 
-        if (W._calling) {
-            for (var i = 0; i < W._calling.length; i++) {
-                W._calling[i].cancel();
-            }
-        }
+        cancelPromises(W)
 
         var scope = W.scope;
         if (scope) {
@@ -308,17 +297,45 @@ Object.assign(WClass.fn, {
 
     open: function(name) {
         var W = this;
-        return new Promise(function(resolve, reject) {
+        var canceled;
+        return W.promise(function(resolve, reject) {
             W.fire("open", {
                 name: name,
-                onclose: resolve
+                onclose: function(value) {
+                    if (canceled) {
+                        return;
+                    }
+                    resolve(value);
+                }
             });
-        });
+        }, function() {
+            canceled = true;
+        })
     },
 
     param: function(name) {
         var W = this;
         return W._params && W._params[name];
+    },
+
+    promise: function(fn, cancel) {
+        var W = this;
+        var promises = W._promises = W._promises || [];
+        var promise = new Promise(function(resolve, reject) {
+            function _resolve(value) {
+                promises.splice(promises.indexOf(promise), 1);
+                resolve(value);
+            }
+            function _reject(value) {
+                promises.splice(promises.indexOf(promise), 1);
+                reject(value);
+            }
+            
+            return fn(_resolve, _reject);
+        });
+        promise.cancel = cancel;
+        promises.push(promise);
+        return promise;
     },
 
     reload: function() {
@@ -333,11 +350,7 @@ Object.assign(WClass.fn, {
             bubbles: false
         });
 
-        if (W._calling) {
-            for (var i = 0; i < W._calling.length; i++) {
-                W._calling[i].cancel();
-            }
-        }
+        cancelPromises(W);
 
         if (scope) {
             delete W.scope;
@@ -391,14 +404,13 @@ Object.assign(WClass.fn, {
     },
 
     sleep: function(ms) {
+        var W = this;
         var handle;
-        var promise = new Promise(function(resolve, reject) {
+        return W.promise(function(resolve, reject) {
             handle = window.setTimeout(resolve, ms);
-        });
-        promise.cancel = function() {
+        }, function() {
             window.clearTimeout(handle);
-        };
-        return promise;
+        });
     },
 
     which: function(elem) {

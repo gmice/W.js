@@ -27,23 +27,46 @@ Object.assign(WClass.fn, {
     // Load page into pesudo window
     load: function(page) {
         var W = this;
-        return new Promise(function(resolve, reject) {
-            // 1. Resolve page imports
-            resolvePage(page).then(function(scope) {
+        var canceled;
+        return W.promise(function(resolve, reject) {
+            var _loadPage;
+            if (typeof page === "string") {
+                var href = page;
+                _loadPage = loadPage(href).then(function(value) {
+                    page = value;
+                    return page;
+                });
+            } else {
+                _loadPage = Promise.resolve(page);
+            }
+
+            _loadPage.then(function(page) {
+                // 1. Resolve page imports
+                if (canceled) return;
+                return resolvePage(page);
+            }).then(function(scope) {
+                if (canceled) return;
                 W.scope = scope;
                 // 2. Apply page to the new W.scope
                 return W.call(page.apply, W, scope.module.exports, null, scope.module); // FIXME: require, __filename, __dirname
             }).then(function() {
+                if (canceled) return;
                 // 3. Digest first time
                 return W.digest();
             }).then(function() {
+                if (canceled) return;
                 // 4. Fire onload event
                 W.fire({type: 'load', bubbles: false});
                 if (W.node.ref) {
                     W.node.ref.set(W.scope.module.exports);
                 }
-            }).then(resolve);
-        })
+            }).then(function() {
+                if (canceled) return;
+                resolve();
+            });
+        }, function() {
+            canceled = true;
+        });
     },
 
     _class: function(s, o) {
@@ -544,7 +567,11 @@ function compile(content, href) {
     var dom;
     if (typeof content === 'string') {
         var handler = new htmlparser.DomHandler();
-        var parser = new htmlparser.Parser(handler, {decodeEntities: true});
+        var parser = new htmlparser.Parser(handler, {
+            decodeEntities: true, 
+            lowerCaseTags: false, 
+            lowerCaseAttributeNames: false
+        });
         parser.write(content);
         parser.end();
         dom = handler.dom;

@@ -198,7 +198,13 @@ function VElement(W, name, type, attributes, parent) {
     this.children   = [];
     this.listeners  = {};
     this.parent     = parent;
-    parent && parent.children.push(this);
+    if (parent) {
+        this.ns = parent.ns;
+        parent.children.push(this);
+    }
+    if (name === 'svg') {
+        this.ns = 'http://www.w3.org/2000/svg';
+    }
 }
 
 VElement.prototype = new VNode();
@@ -210,7 +216,12 @@ Object.assign(VElement.prototype, {
         }
 
         var W = this.W;
-        var node = this.node = document.createElement(this.name);
+        var node;
+        if (this.ns) {
+            node = this.node = document.createElementNS(this.ns, this.name);
+        } else {
+            node = this.node = document.createElement(this.name);
+        }
         cursor(node);
 
         if (this.ref) {
@@ -228,7 +239,7 @@ Object.assign(VElement.prototype, {
         for (var attrName in attributes) {
             var attrValue = attributes[attrName];
             if (attrValue != null) {
-                var isProp = (this.name === 'select' && attrName === 'value'); // FIXME: Support more properties
+                var isProp = ((this.name === 'select' || this.name === 'textarea') && attrName === 'value'); // FIXME: Support more properties
                 if (isProp) {
                     node[attrName] = attrValue;
                 } else {
@@ -419,7 +430,10 @@ function VHTMLNode(W, html, filters, parent) {
     this.filters = filters;
     this.isPure  = filters ? filter.isPure(filters) : true;
     this.parent  = parent;
-    parent && parent.children.push(this);
+    if (parent) {
+        this.ns = parent.ns;
+        parent.children.push(this);
+    }
 }
 
 Object.assign(VHTMLNode.prototype, {
@@ -428,10 +442,22 @@ Object.assign(VHTMLNode.prototype, {
 
     attach: function(cursor) {
         var html = this.filters ? filter.apply(this.html, this.filters) : this.html;
-        var node = createTemplate(html);
-        this.markBeg = node.content.firstChild;
-        this.markEnd = node.content.lastChild;
-        cursor(node.content);
+        var node = createTemplate(html, this.ns);
+        var content = node.content;
+        if (this.ns == 'http://www.w3.org/2000/svg') {
+            var svg = content.firstChild;
+            this.markBeg = svg.firstChild;
+            this.markEnd = svg.lastChild;
+            var fragment = document.createDocumentFragment();
+            while (svg.firstChild) {
+                fragment.appendChild(svg.firstChild);
+            }
+            content = fragment;
+        } else {
+            this.markBeg = content.firstChild;
+            this.markEnd = content.lastChild;
+        }
+        cursor(content);
     },
 
     clean: function() {
@@ -455,10 +481,23 @@ Object.assign(VHTMLNode.prototype, {
                 html = filter.apply(html, that.filters);
             }
 
-            var tpl = createTemplate(html);
-            var markBeg = tpl.content.firstChild;
-            var markEnd = tpl.content.lastChild;
-            this.markBeg.parentNode.insertBefore(tpl.content, this.markBeg);
+            var tpl = createTemplate(html, this.ns);
+            var content = tpl.content;
+            var markBeg, markEnd;
+            if (this.ns == 'http://www.w3.org/2000/svg') {
+                var svg = content.firstChild;
+                markBeg = svg.firstChild;
+                markEnd = svg.lastChild;
+                var fragment = document.createDocumentFragment();
+                while (svg.firstChild) {
+                    fragment.appendChild(svg.firstChild);
+                }
+                content = fragment;
+            } else {
+                markBeg = content.firstChild;
+                markEnd = content.lastChild;
+            }
+            this.markBeg.parentNode.insertBefore(content, this.markBeg);
 
             var node;
             while ((node = this.markEnd.previousSibling) !== this.markBeg) {
@@ -480,7 +519,10 @@ function WElement(W, attributes, parent) {
     this.attributes = attributes;
     this.children   = [];
     this.parent     = parent;
-    parent && parent.children.push(this);
+    if (parent) {
+        this.ns = parent.ns;
+        parent.children.push(this);
+    }
 }
 
 WElement.prototype = new VNode();
@@ -616,9 +658,7 @@ Object.assign(WElement.prototype, {
             }
         }
 
-        Page.load(href).then(function(page) {
-            Wc.load(page);
-        });
+        Wc.load(href);
     }
 });
 
@@ -737,9 +777,13 @@ Object.assign(WWidgetElement.prototype, {
     }
 });
 
-function createTemplate(html) {
+function createTemplate(html, ns) {
     var tpl = document.createElement('template');
-    tpl.innerHTML = '<!---->' + (html == null ? '' : html) + '<!---->';
+    if (ns === 'http://www.w3.org/2000/svg') {
+        tpl.innerHTML = '<svg><!---->' + (html == null ? '' : html) + '<!----></svg>';
+    } else {
+        tpl.innerHTML = '<!---->' + (html == null ? '' : html) + '<!---->';
+    }
     return tpl;
 }
 
